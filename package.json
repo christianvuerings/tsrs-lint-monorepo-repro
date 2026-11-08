@@ -1,0 +1,14 @@
+{
+  "name": "tsrs-lint-monorepo-repro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A generated monorepo for timing oxlint type-aware lint with tsrs-lint and tsgolint over many tsconfig programs in one request",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "devDependencies": {
+    "oxlint": "1.92.0",
+    "oxlint-tsgolint": "7.0.2006",
+    "tsrs": "0.23.0-ts7.1.0-beta"
+  }
+}
