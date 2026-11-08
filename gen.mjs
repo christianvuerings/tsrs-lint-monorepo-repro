@@ -31,9 +31,9 @@ const opts = {
   typesKB: 560,
   schemaKB: 6000,
   schemaFiles: 340,
-  schemaFrom: 1000,
+  schemaFrom: 750,
   supportFunctions: 24,
-  supportFiles: '1300x1,700x2,100x19,3',
+  supportFiles: '780/7/10.8x1,740/3/4.9x1,580/3/5.6x1,420/1/2.1x1,145/9/13.7x1,95/1/3x1,90/3/5.1x1,85/3/4.9x1,85/1/3x1,65/4/6.6x1,55/2/3.6x1,55/1/1.7x1,3',
   pathAliases: 20,
   chainEvery: 4,
   globalTypes: 21,
@@ -262,12 +262,14 @@ const closure = (refs) => {
   return seen;
 };
 const suiteRefCounts = opts.suiteRefs.split(',').map(Number);
-// "1300x1,700x2,100x19,3": 1 suite with 1,300 support files, 2 with 700, 19 with 100, the rest with 3, spread by the
-// seeded shuffle.
+// Support code per suite, as `files[/functions[/KB]][xsuites]`: "780/7/10.8x1,95/1x2,3" is 1 suite with 780 support
+// files of 7 function pairs each, padded with comment lines to 10.8 KB, 2 suites with 95 files of 1 pair, and every
+// other suite (an entry without `x`) with 3 files of `supportFunctions` pairs, spread by the seeded shuffle. Without
+// padding a file is about 0.6 KB plus 0.37 KB per function pair.
 const supportPattern = [];
 for (const part of opts.supportFiles.split(',')) {
-  const [n, times] = part.split('x').map(Number);
-  for (let i = 0; i < (times || opts.suites); i++) supportPattern.push(n);
+  const [, n, fns, kb, times] = part.match(/^(\d+)(?:\/(\d+))?(?:\/([\d.]+))?(?:x(\d+))?$/).map(Number);
+  for (let i = 0; i < (times || opts.suites); i++) supportPattern.push({ n, fns: fns || opts.supportFunctions, kb });
 }
 supportPattern.length = opts.suites;
 for (let i = supportPattern.length - 1; i > 0; i--) {
@@ -289,14 +291,18 @@ for (let s = 0; s < opts.suites; s++) {
   for (const p of c) union.add(p);
   const count = Math.max(1, Math.round(opts.filesPerSuite * (0.25 + 1.5 * rand())));
   // Each suite's own support code: most suites have a little, a few have a lot (page objects, fixtures).
-  const supportCount = supportPattern[s % supportPattern.length];
+  const { n: supportCount, fns: supportFunctions, kb: supportKB } = supportPattern[s % supportPattern.length];
   let supportIndex = '';
   for (let k = 0; k < supportCount; k++) {
     let body = `export interface Record${k} { id: string; count: number; tags?: string[]; nested?: { at: number; by: string } }\n`;
     body += `export async function helper${k}(input: Record${k}) {\n  const tags = [...(input.tags ?? []), 'h${k}'].map((t, i) => ({ t, i, upper: t.toUpperCase() }));\n  const byKey = Object.fromEntries(tags.map((x) => [x.t, x] as const));\n  const nested = input.nested ? { ...input.nested, at: input.nested.at + 1 } : undefined;\n  return { ...input, tags: tags.map((x) => x.t), byKey, nested, total: tags.reduce((a, x) => a + x.i, input.count) };\n}\n`;
-    for (let j = 0; j < opts.supportFunctions; j++) {
+    for (let j = 0; j < supportFunctions; j++) {
       body += `export function pick${k}_${j}<K extends keyof Record${k}>(r: Record${k}, key: K): Record${k}[K] { return r[key]; }\n`;
       body += `export async function step${k}_${j}(r: Record${k}, n = ${j}) {\n  const next = await helper${k}(r);\n  const items = Object.entries(next.byKey).map(([key, v]) => ({ key, ...v, n }));\n  return { ...next, step: n + next.total, items, first: items[0]?.upper ?? null };\n}\n`;
+    }
+    // Comment lines up to `supportKB` per file, as real files carry documentation and blank lines besides code.
+    for (let line = 0; supportKB && body.length < supportKB * 1024; line++) {
+      body += line % 6 === 5 ? '\n' : `// Step ${line} of helper ${k}: reads the record, updates the tags and returns the next state.\n`;
     }
     write(`${rel}/support/s${pad(k)}.ts`, body);
     supportIndex += `export * from './s${pad(k)}';\n`;
